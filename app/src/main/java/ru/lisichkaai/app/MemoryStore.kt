@@ -46,6 +46,10 @@ object MemoryStore {
 
     fun clear(context: Context) = save(context, emptyList())
 
+    fun autoEnabled(context: Context): Boolean = AppSettings.getBoolean(context, "memory_auto_enabled", true)
+
+    fun setAutoEnabled(context: Context, enabled: Boolean) = AppSettings.putBoolean(context, "memory_auto_enabled", enabled)
+
     fun promptContext(context: Context): String {
         val memories = all(context)
         if (memories.isEmpty()) return ""
