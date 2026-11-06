@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.SpanStyle
@@ -262,7 +264,7 @@ private fun TopBar(onSettings: () -> Unit) {
             ),
             contentAlignment = Alignment.Center
         ) {
-            Text("🦊", fontSize = 23.sp)
+            Image(painter = painterResource(R.drawable.fox_icon_foreground), contentDescription = "Лисичка", modifier = Modifier.size(38.dp))
         }
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
@@ -288,7 +290,7 @@ private fun WelcomeHeader() {
             ),
             contentAlignment = Alignment.Center
         ) {
-            Text("🦊", fontSize = 62.sp)
+            Image(painter = painterResource(R.drawable.fox_icon_foreground), contentDescription = "Лисичка", modifier = Modifier.size(100.dp))
         }
         Spacer(Modifier.height(8.dp))
         Text("ТВОЯ ЛИЧНАЯ ИИ-ПОДРУГА", color = Lavender, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
