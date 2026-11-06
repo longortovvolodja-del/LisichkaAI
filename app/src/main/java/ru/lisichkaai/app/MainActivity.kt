@@ -120,9 +120,15 @@ private fun LisichkaApp() {
                                                 }
                                             }
                                             speech.onSuccess { audio ->
-                                                VoicePlayer.play(context, audio) { playing ->
-                                                    speaking = playing
-                                                    if (playing) voiceError = null
+                                                if (AppSettings.voiceEnabled(context)) {
+                                                    runCatching {
+                                                        VoicePlayer.play(context, audio) { playing ->
+                                                            speaking = playing
+                                                            if (playing) voiceError = null
+                                                        }
+                                                    }.onFailure {
+                                                        voiceError = "Не удалось воспроизвести аудио: ${it.message ?: "ошибка плеера"}"
+                                                    }
                                                 }
                                             }.onFailure {
                                                 voiceError = "Не удалось озвучить ответ: ${it.message ?: "ошибка TTS"}"
@@ -133,7 +139,7 @@ private fun LisichkaApp() {
                             }
                         )
                         "Память" -> PlaceholderScreen()
-                        "Настройки" -> SettingsScreen()
+                        "Настройки" -> SettingsScreen(onVoiceDisabled = { speaking = false })
                     }
                 }
             }
@@ -328,7 +334,7 @@ private fun Composer(
 }
 
 @Composable
-private fun SettingsScreen() {
+private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var baseUrl by rememberSaveable { mutableStateOf(AppSettings.baseUrl(context)) }
@@ -364,7 +370,7 @@ private fun SettingsScreen() {
                 onCheckedChange = {
                     voiceEnabled = it
                     AppSettings.putBoolean(context, "voice_enabled", it)
-                    if (!it) VoicePlayer.stop()
+                    if (!it) { VoicePlayer.stop(); onVoiceDisabled() }
                 }
             )
         }
