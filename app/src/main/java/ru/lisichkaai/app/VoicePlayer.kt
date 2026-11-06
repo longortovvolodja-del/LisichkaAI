@@ -34,7 +34,6 @@ object VoicePlayer {
         } catch (error: Exception) {
             release()
             onPlayingChanged(false)
-            throw error
         }
     }
 
