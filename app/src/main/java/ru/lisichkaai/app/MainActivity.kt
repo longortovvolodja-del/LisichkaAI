@@ -603,7 +603,7 @@ private fun MemoryScreen() {
 }
 
 private fun markdownText(source: String) = buildAnnotatedString {
-    val token = Regex("""(\\*\\*.+?\\*\\*|~~.+?~~|(?<!\\*)\\*[^*]+?\\*|`[^`]+`)""")
+    val token = Regex("""(\*\*.+?\*\*|~~.+?~~|\*[^*]+?\*|`[^`]+`)""")
     source.lines().forEachIndexed { lineIndex, original ->
         val line = original.trimStart()
         val heading = line.startsWith("#")
