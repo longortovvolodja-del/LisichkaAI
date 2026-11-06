@@ -44,11 +44,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Ink = Color(0xFF0B0912)
-private val Panel = Color(0xFF171321)
-private val Violet = Color(0xFF9B72F2)
-private val Lavender = Color(0xFFC7B2FF)
-private val Muted = Color(0xFF9B93AA)
+private val Ink = Color(0xFF05050D)
+private val Panel = Color(0xFF111020)
+private val Violet = Color(0xFF8B35FF)
+private val Lavender = Color(0xFFD6BDFF)
+private val Muted = Color(0xFF918BAA)
+private val ElectricBlue = Color(0xFF287BFF)
+private val NeonPink = Color(0xFFE05BFF)
+private val PanelBorder = Color(0xFF44306B)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,7 +77,7 @@ private fun LisichkaApp() {
     MaterialTheme(colorScheme = darkColorScheme(primary = Violet, secondary = Lavender, background = Ink, surface = Panel)) {
         Column(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color(0xFF171024), Ink, Color(0xFF09080D)))
+                Brush.linearGradient(listOf(Color(0xFF18072F), Color(0xFF080813), Color(0xFF06152A), Ink))
             )
         ) {
             TopBar(onSettings = { selectedTab = "Настройки" })
@@ -163,7 +166,7 @@ private fun LisichkaApp() {
                 }
             }
 
-            NavigationBar(containerColor = Color(0xF014101D), contentColor = Lavender) {
+            NavigationBar(containerColor = Color(0xF5090815), contentColor = Lavender) {
                 listOf("Чат", "Память", "Настройки").forEach { tab ->
                     NavigationBarItem(
                         selected = selectedTab == tab,
@@ -182,7 +185,7 @@ private fun LisichkaApp() {
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = Lavender,
                             selectedTextColor = Lavender,
-                            indicatorColor = Color(0xFF35264F),
+                            indicatorColor = Color(0xFF39205F),
                             unselectedIconColor = Muted,
                             unselectedTextColor = Muted
                         )
@@ -253,8 +256,8 @@ private fun TopBar(onSettings: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(42.dp).background(
-                Brush.linearGradient(listOf(Color(0xFF8D5CE6), Color(0xFF39235E))),
+            Modifier.size(46.dp).background(
+                Brush.linearGradient(listOf(NeonPink, Violet, ElectricBlue)),
                 CircleShape
             ),
             contentAlignment = Alignment.Center
@@ -279,8 +282,8 @@ private fun WelcomeHeader() {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            Modifier.size(116.dp).background(
-                Brush.radialGradient(listOf(Color(0xFF6746A0), Color(0xFF241A36), Color.Transparent)),
+            Modifier.size(132.dp).background(
+                Brush.radialGradient(listOf(Color(0xFF8D4DFF), Color(0xFF263B88), Color.Transparent)),
                 CircleShape
             ),
             contentAlignment = Alignment.Center
@@ -288,8 +291,17 @@ private fun WelcomeHeader() {
             Text("🦊", fontSize = 62.sp)
         }
         Spacer(Modifier.height(8.dp))
-        Text("Привет! Я Лисичка 💜", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
+        Text("ТВОЯ ЛИЧНАЯ ИИ-ПОДРУГА", color = Lavender, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("Привет! Я Лисичка 💜", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
         Text("Чем займёмся сегодня?", color = Muted, fontSize = 14.sp)
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            listOf("✦ Умная", "♡ Заботливая", "🐾 Рядом").forEach { tag ->
+                Surface(color = Color(0x332E1D52), shape = RoundedCornerShape(50), border = androidx.compose.foundation.BorderStroke(1.dp, PanelBorder)) {
+                    Text(tag, color = Lavender, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                }
+            }
+        }
     }
 }
 
@@ -300,8 +312,9 @@ private fun MessageBubble(message: ChatMessage) {
         horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start
     ) {
         Surface(
-            color = if (message.fromUser) Color(0xFF49316D) else Panel,
-            shape = RoundedCornerShape(18.dp),
+            color = if (message.fromUser) Color(0xFF3A1D69) else Color(0xEE151326),
+            shape = RoundedCornerShape(20.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, if (message.fromUser) Color(0xFF8050D7) else Color(0xFF302747)),
             modifier = Modifier.widthIn(max = 310.dp)
         ) {
             Text(
@@ -325,7 +338,8 @@ private fun Composer(
     Row(
         Modifier.fillMaxWidth().navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 12.dp)
-            .background(Color(0xFF211A2D), RoundedCornerShape(26.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF211633), Color(0xFF101A32))), RoundedCornerShape(26.dp))
+            .then(Modifier)
             .padding(start = 17.dp, end = 7.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -375,7 +389,7 @@ private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Настройки", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("Настройки ✦", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
         Text("Озвучивание ответов", color = Lavender, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -403,7 +417,7 @@ private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
             singleLine = true
         )
         Text("Озвучивание использует тот же API-ключ AnyModel. При выключенном переключателе запросы синтеза не отправляются.", color = Muted, fontSize = 12.sp)
-        Divider(color = Color(0xFF3A3048))
+        Divider(color = PanelBorder)
         Text("Подключение к AnyModel", color = Lavender, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         OutlinedTextField(
             value = baseUrl,
@@ -548,7 +562,7 @@ private fun MemoryScreen() {
     var confirmClear by remember { mutableStateOf(false) }
     fun refresh() { entries = MemoryStore.all(context) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Память Лисички", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("Память Лисички 🧠", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
         Text("Эти записи доступны Лисичке в любом новом разговоре на этом телефоне. Они хранятся локально в зашифрованных настройках приложения.", color = Muted, fontSize = 13.sp)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -580,7 +594,7 @@ private fun MemoryScreen() {
         }
         if (entries.isEmpty()) Text("Пока здесь пусто. Добавь факт вручную или включи автоматическое запоминание.", color = Muted, fontSize = 14.sp)
         else entries.forEach { item ->
-            Surface(color = Panel, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+            Surface(color = Color(0xEE151326), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, PanelBorder), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(item.text, color = Color.White, fontSize = 14.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
