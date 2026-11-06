@@ -22,10 +22,19 @@ object AppSettings {
         prefs(context).edit().putString(key, value).apply()
     }
 
+    fun putBoolean(context: Context, key: String, value: Boolean) {
+        prefs(context).edit().putBoolean(key, value).apply()
+    }
+
+    fun getBoolean(context: Context, key: String, default: Boolean = false): Boolean =
+        runCatching { prefs(context).getBoolean(key, default) }.getOrDefault(default)
+
     fun apiKey(context: Context) = get(context, "api_key")
     fun baseUrl(context: Context) = get(context, "base_url", "https://anymodel.org/v1")
     fun model(context: Context) = get(context, "model")
     fun prompt(context: Context) = get(context, "system_prompt", PromptProfiles.defaultPrompt)
+    fun voiceEnabled(context: Context) = getBoolean(context, "voice_enabled", false)
+    fun voiceModel(context: Context) = get(context, "voice_model", "edge-tts/ru-RU-SvetlanaNeural")
 }
 
 object PromptProfiles {
