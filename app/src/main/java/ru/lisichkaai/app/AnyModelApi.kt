@@ -83,6 +83,32 @@ object AnyModelApi {
         }
     }
 
+    fun extractMemories(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        userMessage: String,
+        assistantMessage: String
+    ): List<String> {
+        val system = "Выдели только полезные устойчивые факты о пользователе, его предпочтения, цели и текущие проекты. Не сохраняй пароли, API-ключи, финансовые реквизиты, медицинские сведения, интимные данные или одноразовые вопросы. Верни только JSON-массив коротких строк на русском. Если нечего запоминать — верни []. Не добавляй догадки."
+        val messages = JSONArray()
+            .put(JSONObject().put("role", "system").put("content", system))
+            .put(JSONObject().put("role", "user").put("content",
+                "Сообщение пользователя: ${userMessage.take(3000)}\nОтвет ассистента: ${assistantMessage.take(3000)}\n\nТекущие записи не нужны, выдели только новые факты."))
+        val body = JSONObject().put("model", model).put("messages", messages).put("stream", false)
+        val response = JSONObject(request("${baseUrl.trimEnd('/')}/chat/completions", apiKey, "POST", body.toString()))
+        val raw = response.optJSONArray("choices")?.optJSONObject(0)
+            ?.optJSONObject("message")?.optString("content").orEmpty()
+        val jsonText = raw.substringAfter("[", "").substringBeforeLast("]", "").let { "[$it]" }
+        val array = JSONArray(jsonText)
+        return buildList {
+            for (i in 0 until array.length()) {
+                val value = array.optString(i).trim()
+                if (value.length in 4..240) add(value)
+            }
+        }.distinct()
+    }
+
     fun sendMessage(
         baseUrl: String,
         apiKey: String,
