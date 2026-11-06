@@ -31,6 +31,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -99,7 +104,7 @@ private fun LisichkaApp() {
                                                     AppSettings.baseUrl(context),
                                                     AppSettings.apiKey(context),
                                                     AppSettings.model(context),
-                                                    AppSettings.prompt(context),
+                                                    AppSettings.prompt(context) + MemoryStore.promptContext(context),
                                                     history
                                                 )
                                             }.getOrElse {
@@ -108,6 +113,20 @@ private fun LisichkaApp() {
                                         }
                                         messages.add(ChatMessage(answer, false))
                                         sending = false
+                                        if (MemoryStore.autoEnabled(context) && AppSettings.apiKey(context).isNotBlank()) {
+                                            val learned = withContext(Dispatchers.IO) {
+                                                runCatching {
+                                                    AnyModelApi.extractMemories(
+                                                        AppSettings.baseUrl(context),
+                                                        AppSettings.apiKey(context),
+                                                        AppSettings.model(context),
+                                                        text,
+                                                        answer
+                                                    )
+                                                }.getOrDefault(emptyList())
+                                            }
+                                            learned.forEach { MemoryStore.add(context, it) }
+                                        }
                                         if (AppSettings.voiceEnabled(context) && answer.isNotBlank()) {
                                             val speech = withContext(Dispatchers.IO) {
                                                 runCatching {
@@ -138,7 +157,7 @@ private fun LisichkaApp() {
                                 }
                             }
                         )
-                        "Память" -> PlaceholderScreen()
+                        "Память" -> MemoryScreen()
                         "Настройки" -> SettingsScreen(onVoiceDisabled = { speaking = false })
                     }
                 }
@@ -286,10 +305,11 @@ private fun MessageBubble(message: ChatMessage) {
             modifier = Modifier.widthIn(max = 310.dp)
         ) {
             Text(
-                message.text,
-                Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
+                text = remember(message.text) { markdownText(message.text) },
+                modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
                 color = Color.White,
-                fontSize = 15.sp
+                fontSize = 15.sp,
+                lineHeight = 22.sp
             )
         }
     }
@@ -519,19 +539,96 @@ private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
 }
 
 @Composable
-private fun PlaceholderScreen() {
-    Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("🦊", fontSize = 48.sp)
-        Spacer(Modifier.height(12.dp))
-        Text("Память Лисички", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text(
-            "Этот раздел пока в разработке. Переписки и долговременная память ещё не сохраняются между запусками приложения.",
-            color = Muted,
-            fontSize = 14.sp
-        )
+private fun MemoryScreen() {
+    val context = LocalContext.current
+    var entries by remember { mutableStateOf(MemoryStore.all(context)) }
+    var draft by rememberSaveable { mutableStateOf("") }
+    var editingId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var autoSave by remember { mutableStateOf(MemoryStore.autoEnabled(context)) }
+    var confirmClear by remember { mutableStateOf(false) }
+    fun refresh() { entries = MemoryStore.all(context) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Память Лисички", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("Эти записи доступны Лисичке в любом новом разговоре на этом телефоне. Они хранятся локально в зашифрованных настройках приложения.", color = Muted, fontSize = 13.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Автоматически запоминать важное", color = Color.White, fontSize = 15.sp)
+                Text("ИИ выделяет устойчивые факты из беседы. Пароли и чувствительные сведения исключаются.", color = Muted, fontSize = 12.sp)
+            }
+            Switch(checked = autoSave, onCheckedChange = {
+                autoSave = it
+                MemoryStore.setAutoEnabled(context, it)
+            })
+        }
+        Divider(color = Color(0xFF3A3048))
+        Text(if (editingId == null) "Добавить воспоминание" else "Изменить воспоминание", color = Lavender, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        OutlinedTextField(value = draft, onValueChange = { draft = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Например: предпочитаю ответы на русском языке") }, minLines = 2)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(enabled = draft.isNotBlank(), onClick = {
+                val id = editingId
+                if (id == null) MemoryStore.add(context, draft) else MemoryStore.update(context, id, draft)
+                draft = ""
+                editingId = null
+                refresh()
+            }) { Text(if (editingId == null) "Сохранить" else "Обновить") }
+            if (editingId != null) OutlinedButton(onClick = { draft = ""; editingId = null }) { Text("Отмена") }
+        }
+        Divider(color = Color(0xFF3A3048))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Сохранённые записи · ${entries.size}", color = Lavender, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            TextButton(onClick = { confirmClear = true }, enabled = entries.isNotEmpty()) { Text("Очистить всё", color = Color(0xFFFF9999)) }
+        }
+        if (entries.isEmpty()) Text("Пока здесь пусто. Добавь факт вручную или включи автоматическое запоминание.", color = Muted, fontSize = 14.sp)
+        else entries.forEach { item ->
+            Surface(color = Panel, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(item.text, color = Color.White, fontSize = 14.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { editingId = item.id; draft = item.text }) { Text("Изменить") }
+                        TextButton(onClick = { MemoryStore.delete(context, item.id); refresh() }) { Text("Удалить", color = Color(0xFFFF9999)) }
+                    }
+                }
+            }
+        }
+    }
+    if (confirmClear) AlertDialog(
+        onDismissRequest = { confirmClear = false },
+        title = { Text("Очистить всю память?") },
+        text = { Text("Все сохранённые воспоминания будут удалены с этого телефона.") },
+        confirmButton = { TextButton(onClick = {
+            MemoryStore.clear(context); refresh(); confirmClear = false; draft = ""; editingId = null
+        }) { Text("Удалить всё", color = Color(0xFFFF9999)) } },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Отмена") } }
+    )
+}
+
+private fun markdownText(source: String) = buildAnnotatedString {
+    val token = Regex("""(\*\*.+?\*\*|~~.+?~~|\*[^*]+?\*|`[^`]+`)""")
+    source.lines().forEachIndexed { lineIndex, original ->
+        val line = original.trimStart()
+        val heading = line.startsWith("#")
+        val bullet = line.startsWith("- ") || line.startsWith("* ")
+        val content = when {
+            heading -> line.dropWhile { it == '#' }.trimStart()
+            bullet -> "•  " + line.drop(2)
+            else -> original
+        }
+        if (lineIndex > 0) append("\n")
+        if (heading) withStyle(SpanStyle(fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Lavender)) { append(content) }
+        else {
+            var cursor = 0
+            token.findAll(content).forEach { match ->
+                append(content.substring(cursor, match.range.first))
+                val value = match.value
+                when {
+                    value.startsWith("**") -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(value.removeSurrounding("**")) }
+                    value.startsWith("~~") -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { append(value.removeSurrounding("~~")) }
+                    value.startsWith("`") -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color(0xFF30263D), color = Lavender)) { append(value.removeSurrounding("`")) }
+                    value.startsWith("*") -> withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) { append(value.removeSurrounding("*")) }
+                }
+                cursor = match.range.last + 1
+            }
+            append(content.substring(cursor))
+        }
     }
 }
