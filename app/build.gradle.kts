@@ -12,7 +12,7 @@ android {
         applicationId = "ru.lisichkaai.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = versionName.split(".").fold(0) { acc, part -> acc * 1000 + part.toInt() }
         versionName = providers.fileContents(rootProject.file("VERSION")).asText.map { it.trim() }.get()
     }
 
