@@ -4,6 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val appVersion = rootProject.file("VERSION").readText().trim()
+val versionParts = appVersion.split(".").map { it.toInt() }
+require(versionParts.size == 3) { "VERSION must use MAJOR.MINOR.PATCH" }
+
 android {
     namespace = "ru.lisichkaai.app"
     compileSdk = 35
@@ -12,8 +16,8 @@ android {
         applicationId = "ru.lisichkaai.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = versionName.split(".").fold(0) { acc, part -> acc * 1000 + part.toInt() }
-        versionName = providers.fileContents(rootProject.file("VERSION")).asText.map { it.trim() }.get()
+        versionCode = versionParts[0] * 1_000_000 + versionParts[1] * 1_000 + versionParts[2]
+        versionName = appVersion
     }
 
     buildFeatures { compose = true }
