@@ -3,6 +3,8 @@ name: Android APK release
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'VERSION'
   workflow_dispatch:
 
 permissions:
