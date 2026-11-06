@@ -59,6 +59,8 @@ private fun LisichkaApp() {
     var draft by rememberSaveable { mutableStateOf("") }
     var selectedTab by rememberSaveable { mutableStateOf("Чат") }
     var sending by remember { mutableStateOf(false) }
+    var speaking by remember { mutableStateOf(false) }
+    var voiceError by remember { mutableStateOf<String?>(null) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -80,6 +82,9 @@ private fun LisichkaApp() {
                             draft = draft,
                             onDraftChange = { draft = it },
                             sending = sending,
+                            speaking = speaking,
+                            voiceError = voiceError,
+                            onStopSpeech = { VoicePlayer.stop(); speaking = false },
                             onSend = {
                                 val text = draft.trim()
                                 if (text.isNotEmpty() && !sending) {
@@ -103,6 +108,26 @@ private fun LisichkaApp() {
                                         }
                                         messages.add(ChatMessage(answer, false))
                                         sending = false
+                                        if (AppSettings.voiceEnabled(context) && answer.isNotBlank()) {
+                                            val speech = withContext(Dispatchers.IO) {
+                                                runCatching {
+                                                    AnyModelApi.synthesizeSpeech(
+                                                        AppSettings.baseUrl(context),
+                                                        AppSettings.apiKey(context),
+                                                        AppSettings.voiceModel(context),
+                                                        answer
+                                                    )
+                                                }
+                                            }
+                                            speech.onSuccess { audio ->
+                                                VoicePlayer.play(context, audio) { playing ->
+                                                    speaking = playing
+                                                    if (playing) voiceError = null
+                                                }
+                                            }.onFailure {
+                                                voiceError = "Не удалось озвучить ответ: ${it.message ?: "ошибка TTS"}"
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -149,6 +174,9 @@ private fun ChatScreen(
     draft: String,
     onDraftChange: (String) -> Unit,
     sending: Boolean,
+    speaking: Boolean,
+    voiceError: String?,
+    onStopSpeech: () -> Unit,
     onSend: () -> Unit
 ) {
     val listState = rememberLazyListState()
@@ -172,6 +200,17 @@ private fun ChatScreen(
                 color = Lavender,
                 modifier = Modifier.padding(start = 22.dp, bottom = 6.dp)
             )
+        }
+        if (speaking) {
+            OutlinedButton(
+                onClick = onStopSpeech,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text("Остановить озвучку")
+            }
+        }
+        voiceError?.let {
+            Text(it, color = Color(0xFFFF8D8D), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         }
         Composer(
             value = draft,
@@ -296,6 +335,8 @@ private fun SettingsScreen() {
     var apiKey by rememberSaveable { mutableStateOf(AppSettings.apiKey(context)) }
     var model by rememberSaveable { mutableStateOf(AppSettings.model(context)) }
     var prompt by rememberSaveable { mutableStateOf(AppSettings.prompt(context)) }
+    var voiceEnabled by rememberSaveable { mutableStateOf(AppSettings.voiceEnabled(context)) }
+    var voiceModel by rememberSaveable { mutableStateOf(AppSettings.voiceModel(context)) }
     var models by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var expanded by rememberSaveable { mutableStateOf(false) }
     var showApiKey by rememberSaveable { mutableStateOf(false) }
@@ -309,6 +350,34 @@ private fun SettingsScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Настройки", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("Озвучивание ответов", color = Lavender, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Говорить каждый ответ", color = Color.White, fontSize = 15.sp)
+                Text("Лисичка автоматически озвучит новые ответы ИИ.", color = Muted, fontSize = 12.sp)
+            }
+            Switch(
+                checked = voiceEnabled,
+                onCheckedChange = {
+                    voiceEnabled = it
+                    AppSettings.putBoolean(context, "voice_enabled", it)
+                    if (!it) VoicePlayer.stop()
+                }
+            )
+        }
+        OutlinedTextField(
+            value = voiceModel,
+            onValueChange = { voiceModel = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Модель голоса") },
+            supportingText = { Text("Например: edge-tts/ru-RU-SvetlanaNeural") },
+            singleLine = true
+        )
+        Text("Озвучивание использует тот же API-ключ AnyModel. При выключенном переключателе запросы синтеза не отправляются.", color = Muted, fontSize = 12.sp)
+        Divider(color = Color(0xFF3A3048))
         Text("Подключение к AnyModel", color = Lavender, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         OutlinedTextField(
             value = baseUrl,
@@ -403,6 +472,7 @@ private fun SettingsScreen() {
                 AppSettings.put(context, "api_key", apiKey.trim())
                 AppSettings.put(context, "model", model.trim())
                 AppSettings.put(context, "system_prompt", prompt)
+                AppSettings.put(context, "voice_model", voiceModel.trim())
                 status = "Настройки сохранены."
             },
             modifier = Modifier.fillMaxWidth()
