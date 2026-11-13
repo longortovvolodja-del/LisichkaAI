@@ -53,7 +53,8 @@ private val Lavender = Color(0xFFD6BDFF)
 private val Muted = Color(0xFF918BAA)
 private val ElectricBlue = Color(0xFF287BFF)
 private val NeonPink = Color(0xFFE05BFF)
-private val PanelBorder = Color(0xFF44306B)
+private val PanelBorder = Color(0xFF493078)
+private val NeonGlow = Color(0xFFB14CFF)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -315,20 +316,35 @@ private fun WelcomeHeader() {
 private fun MessageBubble(message: ChatMessage) {
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start
+        horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
     ) {
+        if (!message.fromUser) {
+            Image(
+                painter = painterResource(R.drawable.fox_icon_foreground),
+                contentDescription = "Лисичка",
+                modifier = Modifier.padding(end = 7.dp, bottom = 5.dp).size(30.dp)
+            )
+        }
         Surface(
-            color = if (message.fromUser) Color(0xFF3A1D69) else Color(0xEE151326),
-            shape = RoundedCornerShape(20.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, if (message.fromUser) Color(0xFF8050D7) else Color(0xFF302747)),
+            color = if (message.fromUser) Color(0xFF39205F) else Color(0xF4141025),
+            shape = RoundedCornerShape(
+                topStart = 19.dp, topEnd = 19.dp,
+                bottomEnd = if (message.fromUser) 5.dp else 19.dp,
+                bottomStart = if (message.fromUser) 19.dp else 5.dp
+            ),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (message.fromUser) Color(0xFF9654F3) else Color(0xFF553A83)
+            ),
             modifier = Modifier.widthIn(max = 310.dp)
         ) {
             Text(
                 text = remember(message.text) { markdownText(message.text) },
                 modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
                 color = Color.White,
-                fontSize = 15.sp,
-                lineHeight = 22.sp
+                fontSize = 14.sp,
+                lineHeight = 21.sp
             )
         }
     }
