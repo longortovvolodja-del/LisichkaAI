@@ -164,7 +164,9 @@ private fun LisichkaApp() {
                             }
                         )
                         "Память" -> MemoryScreen()
-                        "Настройки" -> SettingsScreen(onVoiceDisabled = { speaking = false })
+                        "Настройки" -> SettingsScreen(onVoiceDisabled = { speaking = false }, onModels = { selectedTab = "Модели" }, onAbout = { selectedTab = "О приложении" })
+                        "Модели" -> ModelPickerScreen(onBack = { selectedTab = "Настройки" })
+                        "О приложении" -> AboutScreen(onBack = { selectedTab = "Настройки" })
                     }
                 }
             }
@@ -394,7 +396,7 @@ private fun Composer(
 }
 
 @Composable
-private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
+private fun SettingsScreen(onVoiceDisabled: () -> Unit, onModels: () -> Unit, onAbout: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var baseUrl by rememberSaveable { mutableStateOf(AppSettings.baseUrl(context)) }
@@ -416,6 +418,8 @@ private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Настройки", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        NeonMenuCard("Выбор модели", "Выбери ИИ, которая будет отвечать", "✦", onModels)
+        NeonMenuCard("О приложении", "Лисичка ИИ · версия 1.0.5", "♡", onAbout)
         Text("Озвучивание ответов", color = Lavender, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -575,6 +579,82 @@ private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
             color = Muted,
             fontSize = 12.sp
         )
+    }
+}
+
+
+@Composable
+private fun NeonMenuCard(title: String, subtitle: String, symbol: String, onClick: () -> Unit) {
+    Surface(onClick = onClick, color = Color(0xF4141025), shape = RoundedCornerShape(17.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF59378A)), modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).background(Brush.linearGradient(listOf(NeonPink, Violet, ElectricBlue)), CircleShape), contentAlignment = Alignment.Center) {
+                Text(symbol, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(subtitle, color = Muted, fontSize = 11.sp)
+            }
+            Text("›", color = Lavender, fontSize = 25.sp)
+        }
+    }
+}
+
+@Composable
+private fun ModelPickerScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var models by remember { mutableStateOf(emptyList<String>()) }
+    var selected by rememberSaveable { mutableStateOf(AppSettings.model(context)) }
+    var loading by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("Загрузи список моделей AnyModel.") }
+    LaunchedEffect(Unit) {
+        if (AppSettings.apiKey(context).isNotBlank()) {
+            loading = true
+            runCatching { withContext(Dispatchers.IO) { AnyModelApi.loadModels(AppSettings.baseUrl(context), AppSettings.apiKey(context)) } }
+                .onSuccess { models = it; status = "Доступно моделей: " + it.size }
+                .onFailure { status = "Ошибка загрузки списка моделей" }
+            loading = false
+        } else status = "Сначала добавь API-ключ AnyModel в настройках."
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+        Text("Выбор модели", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("Выбери модель, которая будет отвечать в чате", color = Lavender, fontSize = 12.sp)
+        Text(status, color = Muted, fontSize = 12.sp)
+        if (loading) CircularProgressIndicator(color = NeonGlow)
+        models.forEach { id ->
+            Surface(onClick = { selected = id }, color = if (selected == id) Color(0xFF332052) else CardDark, shape = RoundedCornerShape(15.dp), border = androidx.compose.foundation.BorderStroke(1.dp, if (selected == id) NeonGlow else PanelBorder), modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("✦", color = Lavender, fontSize = 19.sp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(id, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    if (selected == id) Text("●", color = NeonGlow)
+                }
+            }
+        }
+        OutlinedTextField(value = selected, onValueChange = { selected = it }, modifier = Modifier.fillMaxWidth(), label = { Text("ID модели вручную") }, singleLine = true)
+        Button(onClick = { AppSettings.put(context, "model", selected.trim()); onBack() }, modifier = Modifier.fillMaxWidth()) { Text("Применить модель") }
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Назад") }
+    }
+}
+
+@Composable
+private fun AboutScreen(onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Spacer(Modifier.height(20.dp))
+        Box(Modifier.size(142.dp).background(Brush.radialGradient(listOf(Color(0xFF9A43FF), Color(0xFF1748A8), Color.Transparent)), CircleShape), contentAlignment = Alignment.Center) {
+            Image(painter = painterResource(R.drawable.fox_icon_foreground), contentDescription = "Лисичка", modifier = Modifier.size(112.dp))
+        }
+        Text("Лисичка ИИ", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text("Твой личный ИИ-помощник", color = Lavender, fontSize = 14.sp)
+        Text("Версия 1.0.5", color = Muted, fontSize = 12.sp)
+        Surface(color = CardDark, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, PanelBorder)) {
+            Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Место для общения, идей и новых открытий.", color = Color.White, fontSize = 14.sp)
+                Text("AnyModel · локальная память · голосовое озвучивание ответов.", color = Muted, fontSize = 12.sp)
+                Text("Открытый проект · GitHub: longortovvolodja-del/LisichkaAI", color = Lavender, fontSize = 11.sp)
+            }
+        }
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Назад к настройкам") }
     }
 }
 
