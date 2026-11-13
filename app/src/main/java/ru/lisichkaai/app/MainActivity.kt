@@ -215,7 +215,7 @@ private fun ChatScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        WelcomeHeader()
+        if (messages.isEmpty()) WelcomeHeader()
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -268,8 +268,12 @@ private fun TopBar(onSettings: () -> Unit) {
         }
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
-            Text("Лисичка ИИ", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            Text("Твой личный помощник", color = Muted, fontSize = 11.sp)
+            Text("Лисичка", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(6.dp).background(Color(0xFF52E6A5), CircleShape))
+                Spacer(Modifier.width(5.dp))
+                Text("Онлайн · твой ИИ-помощник", color = Muted, fontSize = 11.sp)
+            }
         }
         IconButton(onClick = onSettings) {
             Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Lavender)
@@ -280,11 +284,11 @@ private fun TopBar(onSettings: () -> Unit) {
 @Composable
 private fun WelcomeHeader() {
     Column(
-        Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 14.dp),
+        Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            Modifier.size(132.dp).background(
+            Modifier.size(104.dp).background(
                 Brush.radialGradient(listOf(Color(0xFF8D4DFF), Color(0xFF263B88), Color.Transparent)),
                 CircleShape
             ),
@@ -294,7 +298,7 @@ private fun WelcomeHeader() {
         }
         Spacer(Modifier.height(8.dp))
         Text("ТВОЯ ЛИЧНАЯ ИИ-ПОДРУГА", color = Lavender, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-        Text("Привет! Я Лисичка 💜", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+        Text("Привет! Я Лисичка 💜", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
         Text("Чем займёмся сегодня?", color = Muted, fontSize = 14.sp)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -391,7 +395,7 @@ private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Настройки ✦", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text("Настройки", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Text("Озвучивание ответов", color = Lavender, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -564,7 +568,7 @@ private fun MemoryScreen() {
     var confirmClear by remember { mutableStateOf(false) }
     fun refresh() { entries = MemoryStore.all(context) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Память Лисички 🧠", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text("Память", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Text("Эти записи доступны Лисичке в любом новом разговоре на этом телефоне. Они хранятся локально в зашифрованных настройках приложения.", color = Muted, fontSize = 13.sp)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
