@@ -81,7 +81,6 @@ private fun LisichkaApp() {
     var sending by remember { mutableStateOf(false) }
     var speaking by remember { mutableStateOf(false) }
     var speakingMessageIndex by remember { mutableStateOf<Int?>(null) }
-    var voiceEnabled by rememberSaveable { mutableStateOf(AppSettings.voiceEnabled(context)) }
     var playbackPositionMs by remember { mutableIntStateOf(0) }
     var voiceError by remember { mutableStateOf<String?>(null) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
@@ -121,17 +120,7 @@ private fun LisichkaApp() {
                             speaking = speaking,
                             speakingMessageIndex = speakingMessageIndex,
                             playbackPositionMs = playbackPositionMs,
-                            voiceEnabled = voiceEnabled,
                             voiceError = voiceError,
-                            onToggleVoice = { enabled ->
-                                voiceEnabled = enabled
-                                AppSettings.putBoolean(context, "voice_enabled", enabled)
-                                if (!enabled) {
-                                    VoicePlayer.stop()
-                                    speaking = false
-                                    speakingMessageIndex = null
-                                }
-                            },
                             onSpeakMessage = { index ->
                                 val message = messages.getOrNull(index)
                                 if (message != null && !message.fromUser) {
@@ -239,7 +228,21 @@ private fun LisichkaApp() {
                             }
                         )
                         "Память" -> MemoryScreen()
-                        "Настройки" -> SettingsScreen(onVoiceDisabled = { speaking = false }, onModels = { selectedTab = "Модели" }, onAbout = { selectedTab = "О приложении" })
+                        "Настройки" -> SettingsScreen(
+                            voiceEnabled = voiceEnabled,
+                            onVoiceChange = { enabled ->
+                                voiceEnabled = enabled
+                                AppSettings.putBoolean(context, "voice_enabled", enabled)
+                                if (!enabled) {
+                                    VoicePlayer.stop()
+                                    speaking = false
+                                    speakingMessageIndex = null
+                                }
+                            },
+                            onVoiceDisabled = { speaking = false },
+                            onModels = { selectedTab = "Модели" },
+                            onAbout = { selectedTab = "О приложении" }
+                        )
                         "Модели" -> ModelPickerScreen(onBack = { selectedTab = "Настройки" })
                         "О приложении" -> AboutScreen(onBack = { selectedTab = "Настройки" })
                     }
@@ -293,9 +296,7 @@ private fun ChatScreen(
     speaking: Boolean,
     speakingMessageIndex: Int?,
     playbackPositionMs: Int,
-    voiceEnabled: Boolean,
     voiceError: String?,
-    onToggleVoice: (Boolean) -> Unit,
     onSpeakMessage: (Int) -> Unit,
     onStopSpeech: () -> Unit,
     onSend: () -> Unit
@@ -493,7 +494,7 @@ private fun Composer(
 }
 
 @Composable
-private fun SettingsScreen(onVoiceDisabled: () -> Unit, onModels: () -> Unit, onAbout: () -> Unit) {
+private fun SettingsScreen(voiceEnabled: Boolean, onVoiceChange: (Boolean) -> Unit, onVoiceDisabled: () -> Unit, onModels: () -> Unit, onAbout: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var baseUrl by rememberSaveable { mutableStateOf(AppSettings.baseUrl(context)) }
@@ -529,9 +530,8 @@ private fun SettingsScreen(onVoiceDisabled: () -> Unit, onModels: () -> Unit, on
             Switch(
                 checked = voiceEnabled,
                 onCheckedChange = {
-                    voiceEnabled = it
-                    AppSettings.putBoolean(context, "voice_enabled", it)
-                    if (!it) { VoicePlayer.stop(); onVoiceDisabled() }
+                    onVoiceChange(it)
+                    if (!it) onVoiceDisabled()
                 }
             )
         }
