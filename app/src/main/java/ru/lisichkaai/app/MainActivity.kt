@@ -357,11 +357,14 @@ private fun Composer(
     enabled: Boolean,
     onSend: () -> Unit
 ) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 10.dp),
+        color = Color(0xFF151126),
+        shape = RoundedCornerShape(30.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF68439C))
+    ) {
     Row(
-        Modifier.fillMaxWidth().navigationBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 12.dp)
-            .background(Brush.linearGradient(listOf(Color(0xFF211633), Color(0xFF101A32))), RoundedCornerShape(26.dp))
-            .then(Modifier)
+        Modifier.background(Brush.horizontalGradient(listOf(Color(0xFF241633), Color(0xFF101A32))), RoundedCornerShape(30.dp))
             .padding(start = 17.dp, end = 7.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -382,10 +385,11 @@ private fun Composer(
         IconButton(
             onClick = onSend,
             enabled = enabled,
-            modifier = Modifier.size(42.dp).background(Violet, CircleShape)
+            modifier = Modifier.size(46.dp).background(Brush.linearGradient(listOf(NeonPink, Violet, ElectricBlue)), CircleShape)
         ) {
             Icon(Icons.Default.Send, contentDescription = "Отправить", tint = Color.White)
         }
+    }
     }
 }
 
