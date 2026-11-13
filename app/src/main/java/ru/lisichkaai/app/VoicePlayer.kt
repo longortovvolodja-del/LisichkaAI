@@ -8,7 +8,12 @@ object VoicePlayer {
     private var player: MediaPlayer? = null
     private var audioFile: File? = null
 
-    fun play(context: Context, audio: ByteArray, onPlayingChanged: (Boolean) -> Unit) {
+    fun play(
+        context: Context,
+        audio: ByteArray,
+        onDuration: (Int) -> Unit = {},
+        onPlayingChanged: (Boolean) -> Unit
+    ) {
         stop()
         val file = File(context.cacheDir, "lisichka-voice-${System.currentTimeMillis()}.mp3")
         file.writeBytes(audio)
@@ -16,6 +21,7 @@ object VoicePlayer {
         player = media
         audioFile = file
         media.setOnPreparedListener {
+            onDuration(it.duration.coerceAtLeast(0))
             it.start()
             onPlayingChanged(true)
         }
@@ -34,8 +40,11 @@ object VoicePlayer {
         } catch (error: Exception) {
             release()
             onPlayingChanged(false)
+            throw error
         }
     }
+
+    fun currentPositionMs(): Int = runCatching { player?.currentPosition ?: 0 }.getOrDefault(0)
 
     fun stop() {
         runCatching { player?.stop() }
