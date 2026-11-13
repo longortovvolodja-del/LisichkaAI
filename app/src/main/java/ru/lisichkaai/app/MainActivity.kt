@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.Image
 import androidx.compose.ui.text.font.FontWeight
@@ -64,17 +67,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-data class ChatMessage(val text: String, val fromUser: Boolean)
+data class ChatMessage(val text: String, val fromUser: Boolean, val audioStatus: String = "", val audioDurationMs: Int? = null)
 
 @Composable
 private fun LisichkaApp() {
+    val context = LocalContext.current
     var draft by rememberSaveable { mutableStateOf("") }
     var selectedTab by rememberSaveable { mutableStateOf("Чат") }
     var sending by remember { mutableStateOf(false) }
     var speaking by remember { mutableStateOf(false) }
+    var speakingMessageIndex by remember { mutableStateOf<Int?>(null) }
+    var voiceEnabled by rememberSaveable { mutableStateOf(AppSettings.voiceEnabled(context)) }
+    var playbackPositionMs by remember { mutableIntStateOf(0) }
     var voiceError by remember { mutableStateOf<String?>(null) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val stateHolder = rememberSaveableStateHolder()
 
@@ -84,7 +90,21 @@ private fun LisichkaApp() {
                 Brush.linearGradient(listOf(Color(0xFF18072F), Color(0xFF080813), Color(0xFF06152A), Ink))
             )
         ) {
-            TopBar(onSettings = { selectedTab = "Настройки" })
+            TopBar(
+                onSettings = { selectedTab = "Настройки" },
+                voiceEnabled = voiceEnabled,
+                showVoiceToggle = selectedTab == "Чат",
+                onVoiceToggle = {
+                    voiceEnabled = it
+                    AppSettings.putBoolean(context, "voice_enabled", it)
+                    if (!it) {
+                        VoicePlayer.stop()
+                        speaking = false
+                        speakingMessageIndex = null
+                        playbackPositionMs = 0
+                    }
+                }
+            )
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 stateHolder.SaveableStateProvider(selectedTab) {
@@ -95,8 +115,50 @@ private fun LisichkaApp() {
                             onDraftChange = { draft = it },
                             sending = sending,
                             speaking = speaking,
+                            speakingMessageIndex = speakingMessageIndex,
+                            playbackPositionMs = playbackPositionMs,
+                            voiceEnabled = voiceEnabled,
                             voiceError = voiceError,
-                            onStopSpeech = { VoicePlayer.stop(); speaking = false },
+                            onToggleVoice = { enabled ->
+                                voiceEnabled = enabled
+                                AppSettings.putBoolean(context, "voice_enabled", enabled)
+                                if (!enabled) {
+                                    VoicePlayer.stop()
+                                    speaking = false
+                                    speakingMessageIndex = null
+                                }
+                            },
+                            onSpeakMessage = { index ->
+                                val message = messages.getOrNull(index)
+                                if (message != null && !message.fromUser) {
+                                    scope.launch {
+                                        messages[index] = messages[index].copy(audioStatus = "Создаю озвучку…")
+                                        val audio = withContext(Dispatchers.IO) {
+                                            runCatching { AnyModelApi.synthesizeSpeech(AppSettings.baseUrl(context), AppSettings.apiKey(context), AppSettings.voiceModel(context), message.text) }
+                                        }
+                                        audio.onSuccess { bytes ->
+                                            runCatching {
+                                                VoicePlayer.play(context, bytes, onDuration = { duration ->
+                                                    messages.getOrNull(index)?.let { messages[index] = it.copy(audioDurationMs = duration, audioStatus = "Воспроизведение") }
+                                                }) { playing ->
+                                                    speaking = playing
+                                                    speakingMessageIndex = if (playing) index else null
+                                                    if (!playing) messages.getOrNull(index)?.let { messages[index] = it.copy(audioStatus = "Готово") }
+                                                }
+                                            }.onFailure { messages.getOrNull(index)?.let { messages[index] = it.copy(audioStatus = "Ошибка воспроизведения") } }
+                                        }.onFailure { error ->
+                                            messages.getOrNull(index)?.let { messages[index] = it.copy(audioStatus = "Ошибка: " + (error.message ?: "TTS")) }
+                                        }
+                                    }
+                                }
+                            },
+                            onStopSpeech = {
+                                val index = speakingMessageIndex
+                                VoicePlayer.stop()
+                                speaking = false
+                                speakingMessageIndex = null
+                                index?.let { messages.getOrNull(it)?.let { msg -> messages[it] = msg.copy(audioStatus = "Остановлено") } }
+                            },
                             onSend = {
                                 val text = draft.trim()
                                 if (text.isNotEmpty() && !sending) {
@@ -119,6 +181,7 @@ private fun LisichkaApp() {
                                             }
                                         }
                                         messages.add(ChatMessage(answer, false))
+                                        val answerIndex = messages.lastIndex
                                         sending = false
                                         if (MemoryStore.autoEnabled(context) && AppSettings.apiKey(context).isNotBlank()) {
                                             val learned = withContext(Dispatchers.IO) {
@@ -134,7 +197,8 @@ private fun LisichkaApp() {
                                             }
                                             learned.forEach { MemoryStore.add(context, it) }
                                         }
-                                        if (AppSettings.voiceEnabled(context) && answer.isNotBlank()) {
+                                        if (voiceEnabled && answer.isNotBlank()) {
+                                            messages[answerIndex] = messages[answerIndex].copy(audioStatus = "Создаю озвучку…")
                                             val speech = withContext(Dispatchers.IO) {
                                                 runCatching {
                                                     AnyModelApi.synthesizeSpeech(
@@ -146,18 +210,24 @@ private fun LisichkaApp() {
                                                 }
                                             }
                                             speech.onSuccess { audio ->
-                                                if (AppSettings.voiceEnabled(context)) {
+                                                if (voiceEnabled) {
                                                     runCatching {
-                                                        VoicePlayer.play(context, audio) { playing ->
+                                                        VoicePlayer.play(context, audio, onDuration = { duration ->
+                                                            messages.getOrNull(answerIndex)?.let { messages[answerIndex] = it.copy(audioDurationMs = duration, audioStatus = "Воспроизведение") }
+                                                        }) { playing ->
                                                             speaking = playing
+                                                            speakingMessageIndex = if (playing) answerIndex else null
                                                             if (playing) voiceError = null
+                                                            if (!playing) messages.getOrNull(answerIndex)?.let { messages[answerIndex] = it.copy(audioStatus = "Готово") }
                                                         }
                                                     }.onFailure {
-                                                        voiceError = "Не удалось воспроизвести аудио: ${it.message ?: "ошибка плеера"}"
+                                                        messages[answerIndex] = messages[answerIndex].copy(audioStatus = "Ошибка воспроизведения")
+                                                        voiceError = "Не удалось воспроизвести аудио: " + (it.message ?: "ошибка плеера")
                                                     }
                                                 }
                                             }.onFailure {
-                                                voiceError = "Не удалось озвучить ответ: ${it.message ?: "ошибка TTS"}"
+                                                messages[answerIndex] = messages[answerIndex].copy(audioStatus = "Ошибка озвучки")
+                                                voiceError = "Не удалось озвучить ответ: " + (it.message ?: "ошибка TTS")
                                             }
                                         }
                                     }
@@ -170,6 +240,14 @@ private fun LisichkaApp() {
                         "О приложении" -> AboutScreen(onBack = { selectedTab = "Настройки" })
                     }
                 }
+            }
+
+            LaunchedEffect(speaking) {
+                while (speaking) {
+                    playbackPositionMs = VoicePlayer.currentPositionMs()
+                    kotlinx.coroutines.delay(400)
+                }
+                playbackPositionMs = 0
             }
 
             NavigationBar(containerColor = Color(0xF5090815), contentColor = Lavender) {
