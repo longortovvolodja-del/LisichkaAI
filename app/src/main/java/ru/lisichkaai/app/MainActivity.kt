@@ -55,6 +55,7 @@ private val ElectricBlue = Color(0xFF287BFF)
 private val NeonPink = Color(0xFFE05BFF)
 private val PanelBorder = Color(0xFF493078)
 private val NeonGlow = Color(0xFFB14CFF)
+private val CardDark = Color(0xFF100D20)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
