@@ -53,7 +53,8 @@ private val Lavender = Color(0xFFD6BDFF)
 private val Muted = Color(0xFF918BAA)
 private val ElectricBlue = Color(0xFF287BFF)
 private val NeonPink = Color(0xFFE05BFF)
-private val PanelBorder = Color(0xFF44306B)
+private val PanelBorder = Color(0xFF493078)
+private val NeonGlow = Color(0xFFB14CFF)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -163,7 +164,9 @@ private fun LisichkaApp() {
                             }
                         )
                         "Память" -> MemoryScreen()
-                        "Настройки" -> SettingsScreen(onVoiceDisabled = { speaking = false })
+                        "Настройки" -> SettingsScreen(onVoiceDisabled = { speaking = false }, onModels = { selectedTab = "Модели" }, onAbout = { selectedTab = "О приложении" })
+                        "Модели" -> ModelPickerScreen(onBack = { selectedTab = "Настройки" })
+                        "О приложении" -> AboutScreen(onBack = { selectedTab = "Настройки" })
                     }
                 }
             }
@@ -215,7 +218,7 @@ private fun ChatScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        WelcomeHeader()
+        if (messages.isEmpty()) WelcomeHeader()
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -268,8 +271,12 @@ private fun TopBar(onSettings: () -> Unit) {
         }
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
-            Text("Лисичка ИИ", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            Text("Твой личный помощник", color = Muted, fontSize = 11.sp)
+            Text("Лисичка", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(6.dp).background(Color(0xFF52E6A5), CircleShape))
+                Spacer(Modifier.width(5.dp))
+                Text("Онлайн · твой ИИ-помощник", color = Muted, fontSize = 11.sp)
+            }
         }
         IconButton(onClick = onSettings) {
             Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Lavender)
@@ -280,11 +287,11 @@ private fun TopBar(onSettings: () -> Unit) {
 @Composable
 private fun WelcomeHeader() {
     Column(
-        Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 14.dp),
+        Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            Modifier.size(132.dp).background(
+            Modifier.size(104.dp).background(
                 Brush.radialGradient(listOf(Color(0xFF8D4DFF), Color(0xFF263B88), Color.Transparent)),
                 CircleShape
             ),
@@ -294,7 +301,7 @@ private fun WelcomeHeader() {
         }
         Spacer(Modifier.height(8.dp))
         Text("ТВОЯ ЛИЧНАЯ ИИ-ПОДРУГА", color = Lavender, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-        Text("Привет! Я Лисичка 💜", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+        Text("Привет! Я Лисичка 💜", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
         Text("Чем займёмся сегодня?", color = Muted, fontSize = 14.sp)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -311,20 +318,35 @@ private fun WelcomeHeader() {
 private fun MessageBubble(message: ChatMessage) {
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start
+        horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
     ) {
+        if (!message.fromUser) {
+            Image(
+                painter = painterResource(R.drawable.fox_icon_foreground),
+                contentDescription = "Лисичка",
+                modifier = Modifier.padding(end = 7.dp, bottom = 5.dp).size(30.dp)
+            )
+        }
         Surface(
-            color = if (message.fromUser) Color(0xFF3A1D69) else Color(0xEE151326),
-            shape = RoundedCornerShape(20.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, if (message.fromUser) Color(0xFF8050D7) else Color(0xFF302747)),
+            color = if (message.fromUser) Color(0xFF39205F) else Color(0xF4141025),
+            shape = RoundedCornerShape(
+                topStart = 19.dp, topEnd = 19.dp,
+                bottomEnd = if (message.fromUser) 5.dp else 19.dp,
+                bottomStart = if (message.fromUser) 19.dp else 5.dp
+            ),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (message.fromUser) Color(0xFF9654F3) else Color(0xFF553A83)
+            ),
             modifier = Modifier.widthIn(max = 310.dp)
         ) {
             Text(
                 text = remember(message.text) { markdownText(message.text) },
                 modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
                 color = Color.White,
-                fontSize = 15.sp,
-                lineHeight = 22.sp
+                fontSize = 14.sp,
+                lineHeight = 21.sp
             )
         }
     }
@@ -337,11 +359,14 @@ private fun Composer(
     enabled: Boolean,
     onSend: () -> Unit
 ) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 10.dp),
+        color = Color(0xFF151126),
+        shape = RoundedCornerShape(30.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF68439C))
+    ) {
     Row(
-        Modifier.fillMaxWidth().navigationBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 12.dp)
-            .background(Brush.linearGradient(listOf(Color(0xFF211633), Color(0xFF101A32))), RoundedCornerShape(26.dp))
-            .then(Modifier)
+        Modifier.background(Brush.horizontalGradient(listOf(Color(0xFF241633), Color(0xFF101A32))), RoundedCornerShape(30.dp))
             .padding(start = 17.dp, end = 7.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -362,15 +387,16 @@ private fun Composer(
         IconButton(
             onClick = onSend,
             enabled = enabled,
-            modifier = Modifier.size(42.dp).background(Violet, CircleShape)
+            modifier = Modifier.size(46.dp).background(Brush.linearGradient(listOf(NeonPink, Violet, ElectricBlue)), CircleShape)
         ) {
             Icon(Icons.Default.Send, contentDescription = "Отправить", tint = Color.White)
         }
     }
+    }
 }
 
 @Composable
-private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
+private fun SettingsScreen(onVoiceDisabled: () -> Unit, onModels: () -> Unit, onAbout: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var baseUrl by rememberSaveable { mutableStateOf(AppSettings.baseUrl(context)) }
@@ -391,7 +417,9 @@ private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Настройки ✦", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text("Настройки", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        NeonMenuCard("Выбор модели", "Выбери ИИ, которая будет отвечать", "✦", onModels)
+        NeonMenuCard("О приложении", "Лисичка ИИ · версия 1.0.5", "♡", onAbout)
         Text("Озвучивание ответов", color = Lavender, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -554,6 +582,82 @@ private fun SettingsScreen(onVoiceDisabled: () -> Unit) {
     }
 }
 
+
+@Composable
+private fun NeonMenuCard(title: String, subtitle: String, symbol: String, onClick: () -> Unit) {
+    Surface(onClick = onClick, color = Color(0xF4141025), shape = RoundedCornerShape(17.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF59378A)), modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).background(Brush.linearGradient(listOf(NeonPink, Violet, ElectricBlue)), CircleShape), contentAlignment = Alignment.Center) {
+                Text(symbol, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(subtitle, color = Muted, fontSize = 11.sp)
+            }
+            Text("›", color = Lavender, fontSize = 25.sp)
+        }
+    }
+}
+
+@Composable
+private fun ModelPickerScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var models by remember { mutableStateOf(emptyList<String>()) }
+    var selected by rememberSaveable { mutableStateOf(AppSettings.model(context)) }
+    var loading by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("Загрузи список моделей AnyModel.") }
+    LaunchedEffect(Unit) {
+        if (AppSettings.apiKey(context).isNotBlank()) {
+            loading = true
+            runCatching { withContext(Dispatchers.IO) { AnyModelApi.loadModels(AppSettings.baseUrl(context), AppSettings.apiKey(context)) } }
+                .onSuccess { models = it; status = "Доступно моделей: " + it.size }
+                .onFailure { status = "Ошибка загрузки списка моделей" }
+            loading = false
+        } else status = "Сначала добавь API-ключ AnyModel в настройках."
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+        Text("Выбор модели", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("Выбери модель, которая будет отвечать в чате", color = Lavender, fontSize = 12.sp)
+        Text(status, color = Muted, fontSize = 12.sp)
+        if (loading) CircularProgressIndicator(color = NeonGlow)
+        models.forEach { id ->
+            Surface(onClick = { selected = id }, color = if (selected == id) Color(0xFF332052) else CardDark, shape = RoundedCornerShape(15.dp), border = androidx.compose.foundation.BorderStroke(1.dp, if (selected == id) NeonGlow else PanelBorder), modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("✦", color = Lavender, fontSize = 19.sp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(id, color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    if (selected == id) Text("●", color = NeonGlow)
+                }
+            }
+        }
+        OutlinedTextField(value = selected, onValueChange = { selected = it }, modifier = Modifier.fillMaxWidth(), label = { Text("ID модели вручную") }, singleLine = true)
+        Button(onClick = { AppSettings.put(context, "model", selected.trim()); onBack() }, modifier = Modifier.fillMaxWidth()) { Text("Применить модель") }
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Назад") }
+    }
+}
+
+@Composable
+private fun AboutScreen(onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Spacer(Modifier.height(20.dp))
+        Box(Modifier.size(142.dp).background(Brush.radialGradient(listOf(Color(0xFF9A43FF), Color(0xFF1748A8), Color.Transparent)), CircleShape), contentAlignment = Alignment.Center) {
+            Image(painter = painterResource(R.drawable.fox_icon_foreground), contentDescription = "Лисичка", modifier = Modifier.size(112.dp))
+        }
+        Text("Лисичка ИИ", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text("Твой личный ИИ-помощник", color = Lavender, fontSize = 14.sp)
+        Text("Версия 1.0.5", color = Muted, fontSize = 12.sp)
+        Surface(color = CardDark, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, PanelBorder)) {
+            Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Место для общения, идей и новых открытий.", color = Color.White, fontSize = 14.sp)
+                Text("AnyModel · локальная память · голосовое озвучивание ответов.", color = Muted, fontSize = 12.sp)
+                Text("Открытый проект · GitHub: longortovvolodja-del/LisichkaAI", color = Lavender, fontSize = 11.sp)
+            }
+        }
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Назад к настройкам") }
+    }
+}
+
 @Composable
 private fun MemoryScreen() {
     val context = LocalContext.current
@@ -564,7 +668,7 @@ private fun MemoryScreen() {
     var confirmClear by remember { mutableStateOf(false) }
     fun refresh() { entries = MemoryStore.all(context) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Память Лисички 🧠", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text("Память", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Text("Эти записи доступны Лисичке в любом новом разговоре на этом телефоне. Они хранятся локально в зашифрованных настройках приложения.", color = Muted, fontSize = 13.sp)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
