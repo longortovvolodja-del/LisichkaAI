@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -19,6 +20,10 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -30,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.Image
 import androidx.compose.ui.text.font.FontWeight
@@ -64,17 +71,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-data class ChatMessage(val text: String, val fromUser: Boolean)
+data class ChatMessage(val text: String, val fromUser: Boolean, val audioStatus: String = "", val audioDurationMs: Int? = null)
 
 @Composable
 private fun LisichkaApp() {
+    val context = LocalContext.current
     var draft by rememberSaveable { mutableStateOf("") }
     var selectedTab by rememberSaveable { mutableStateOf("Чат") }
     var sending by remember { mutableStateOf(false) }
     var speaking by remember { mutableStateOf(false) }
+    var voiceEnabled by rememberSaveable { mutableStateOf(AppSettings.voiceEnabled(context)) }
+    var speakingMessageIndex by remember { mutableStateOf<Int?>(null) }
+    var playbackPositionMs by remember { mutableIntStateOf(0) }
     var voiceError by remember { mutableStateOf<String?>(null) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val stateHolder = rememberSaveableStateHolder()
 
@@ -84,7 +94,21 @@ private fun LisichkaApp() {
                 Brush.linearGradient(listOf(Color(0xFF18072F), Color(0xFF080813), Color(0xFF06152A), Ink))
             )
         ) {
-            TopBar(onSettings = { selectedTab = "Настройки" })
+            TopBar(
+                onSettings = { selectedTab = "Настройки" },
+                voiceEnabled = voiceEnabled,
+                showVoiceToggle = selectedTab == "Чат",
+                onVoiceToggle = {
+                    voiceEnabled = it
+                    AppSettings.putBoolean(context, "voice_enabled", it)
+                    if (!it) {
+                        VoicePlayer.stop()
+                        speaking = false
+                        speakingMessageIndex = null
+                        playbackPositionMs = 0
+                    }
+                }
+            )
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 stateHolder.SaveableStateProvider(selectedTab) {
@@ -95,8 +119,40 @@ private fun LisichkaApp() {
                             onDraftChange = { draft = it },
                             sending = sending,
                             speaking = speaking,
+                            speakingMessageIndex = speakingMessageIndex,
+                            playbackPositionMs = playbackPositionMs,
                             voiceError = voiceError,
-                            onStopSpeech = { VoicePlayer.stop(); speaking = false },
+                            onSpeakMessage = { index ->
+                                val message = messages.getOrNull(index)
+                                if (message != null && !message.fromUser) {
+                                    scope.launch {
+                                        messages[index] = messages[index].copy(audioStatus = "Создаю озвучку…")
+                                        val audio = withContext(Dispatchers.IO) {
+                                            runCatching { AnyModelApi.synthesizeSpeech(AppSettings.baseUrl(context), AppSettings.apiKey(context), AppSettings.voiceModel(context), message.text) }
+                                        }
+                                        audio.onSuccess { bytes ->
+                                            runCatching {
+                                                VoicePlayer.play(context, bytes, onDuration = { duration ->
+                                                    messages.getOrNull(index)?.let { messages[index] = it.copy(audioDurationMs = duration, audioStatus = "Воспроизведение") }
+                                                }) { playing ->
+                                                    speaking = playing
+                                                    speakingMessageIndex = if (playing) index else null
+                                                    if (!playing) messages.getOrNull(index)?.let { messages[index] = it.copy(audioStatus = "Готово") }
+                                                }
+                                            }.onFailure { messages.getOrNull(index)?.let { messages[index] = it.copy(audioStatus = "Ошибка воспроизведения") } }
+                                        }.onFailure { error ->
+                                            messages.getOrNull(index)?.let { messages[index] = it.copy(audioStatus = "Ошибка: " + (error.message ?: "TTS")) }
+                                        }
+                                    }
+                                }
+                            },
+                            onStopSpeech = {
+                                val index = speakingMessageIndex
+                                VoicePlayer.stop()
+                                speaking = false
+                                speakingMessageIndex = null
+                                index?.let { messages.getOrNull(it)?.let { msg -> messages[it] = msg.copy(audioStatus = "Остановлено") } }
+                            },
                             onSend = {
                                 val text = draft.trim()
                                 if (text.isNotEmpty() && !sending) {
@@ -119,6 +175,7 @@ private fun LisichkaApp() {
                                             }
                                         }
                                         messages.add(ChatMessage(answer, false))
+                                        val answerIndex = messages.lastIndex
                                         sending = false
                                         if (MemoryStore.autoEnabled(context) && AppSettings.apiKey(context).isNotBlank()) {
                                             val learned = withContext(Dispatchers.IO) {
@@ -134,7 +191,8 @@ private fun LisichkaApp() {
                                             }
                                             learned.forEach { MemoryStore.add(context, it) }
                                         }
-                                        if (AppSettings.voiceEnabled(context) && answer.isNotBlank()) {
+                                        if (voiceEnabled && answer.isNotBlank()) {
+                                            messages[answerIndex] = messages[answerIndex].copy(audioStatus = "Создаю озвучку…")
                                             val speech = withContext(Dispatchers.IO) {
                                                 runCatching {
                                                     AnyModelApi.synthesizeSpeech(
@@ -146,18 +204,24 @@ private fun LisichkaApp() {
                                                 }
                                             }
                                             speech.onSuccess { audio ->
-                                                if (AppSettings.voiceEnabled(context)) {
+                                                if (voiceEnabled) {
                                                     runCatching {
-                                                        VoicePlayer.play(context, audio) { playing ->
+                                                        VoicePlayer.play(context, audio, onDuration = { duration ->
+                                                            messages.getOrNull(answerIndex)?.let { messages[answerIndex] = it.copy(audioDurationMs = duration, audioStatus = "Воспроизведение") }
+                                                        }) { playing ->
                                                             speaking = playing
+                                                            speakingMessageIndex = if (playing) answerIndex else null
                                                             if (playing) voiceError = null
+                                                            if (!playing) messages.getOrNull(answerIndex)?.let { messages[answerIndex] = it.copy(audioStatus = "Готово") }
                                                         }
                                                     }.onFailure {
-                                                        voiceError = "Не удалось воспроизвести аудио: ${it.message ?: "ошибка плеера"}"
+                                                        messages[answerIndex] = messages[answerIndex].copy(audioStatus = "Ошибка воспроизведения")
+                                                        voiceError = "Не удалось воспроизвести аудио: " + (it.message ?: "ошибка плеера")
                                                     }
                                                 }
                                             }.onFailure {
-                                                voiceError = "Не удалось озвучить ответ: ${it.message ?: "ошибка TTS"}"
+                                                messages[answerIndex] = messages[answerIndex].copy(audioStatus = "Ошибка озвучки")
+                                                voiceError = "Не удалось озвучить ответ: " + (it.message ?: "ошибка TTS")
                                             }
                                         }
                                     }
@@ -165,11 +229,33 @@ private fun LisichkaApp() {
                             }
                         )
                         "Память" -> MemoryScreen()
-                        "Настройки" -> SettingsScreen(onVoiceDisabled = { speaking = false }, onModels = { selectedTab = "Модели" }, onAbout = { selectedTab = "О приложении" })
+                        "Настройки" -> SettingsScreen(
+                            voiceEnabled = voiceEnabled,
+                            onVoiceChange = { enabled ->
+                                voiceEnabled = enabled
+                                AppSettings.putBoolean(context, "voice_enabled", enabled)
+                                if (!enabled) {
+                                    VoicePlayer.stop()
+                                    speaking = false
+                                    speakingMessageIndex = null
+                                }
+                            },
+                            onVoiceDisabled = { speaking = false },
+                            onModels = { selectedTab = "Модели" },
+                            onAbout = { selectedTab = "О приложении" }
+                        )
                         "Модели" -> ModelPickerScreen(onBack = { selectedTab = "Настройки" })
                         "О приложении" -> AboutScreen(onBack = { selectedTab = "Настройки" })
                     }
                 }
+            }
+
+            LaunchedEffect(speaking) {
+                while (speaking) {
+                    playbackPositionMs = VoicePlayer.currentPositionMs()
+                    kotlinx.coroutines.delay(400)
+                }
+                playbackPositionMs = 0
             }
 
             NavigationBar(containerColor = Color(0xF5090815), contentColor = Lavender) {
@@ -209,15 +295,15 @@ private fun ChatScreen(
     onDraftChange: (String) -> Unit,
     sending: Boolean,
     speaking: Boolean,
+    speakingMessageIndex: Int?,
+    playbackPositionMs: Int,
     voiceError: String?,
+    onSpeakMessage: (Int) -> Unit,
     onStopSpeech: () -> Unit,
     onSend: () -> Unit
 ) {
     val listState = rememberLazyListState()
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
-    }
-
+    LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex) }
     Column(Modifier.fillMaxSize()) {
         if (messages.isEmpty()) WelcomeHeader()
         LazyColumn(
@@ -226,48 +312,32 @@ private fun ChatScreen(
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(messages) { MessageBubble(it) }
-        }
-        if (sending) {
-            Text(
-                "Лисичка печатает…",
-                color = Lavender,
-                modifier = Modifier.padding(start = 22.dp, bottom = 6.dp)
-            )
-        }
-        if (speaking) {
-            OutlinedButton(
-                onClick = onStopSpeech,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            ) {
-                Text("Остановить озвучку")
+            itemsIndexed(messages) { index, message ->
+                MessageBubble(
+                    message = message,
+                    onSpeak = { onSpeakMessage(index) },
+                    onStop = onStopSpeech,
+                    isSpeaking = speaking && speakingMessageIndex == index,
+                    playbackPositionMs = if (speakingMessageIndex == index) playbackPositionMs else 0
+                )
             }
         }
-        voiceError?.let {
-            Text(it, color = Color(0xFFFF8D8D), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
-        }
-        Composer(
-            value = draft,
-            onValueChange = onDraftChange,
-            enabled = !sending,
-            onSend = onSend
-        )
+        if (sending) Text("Лисичка печатает…", color = Lavender, modifier = Modifier.padding(start = 22.dp, bottom = 6.dp))
+        if (speaking) Text("Сейчас звучит ответ Лисички", color = Lavender, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 4.dp))
+        voiceError?.let { Text(it, color = Color(0xFFFF8D8D), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
+        Composer(value = draft, onValueChange = onDraftChange, enabled = !sending, onSend = onSend)
     }
 }
 
 @Composable
-private fun TopBar(onSettings: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            Modifier.size(46.dp).background(
-                Brush.linearGradient(listOf(NeonPink, Violet, ElectricBlue)),
-                CircleShape
-            ),
-            contentAlignment = Alignment.Center
-        ) {
+private fun TopBar(
+    onSettings: () -> Unit,
+    voiceEnabled: Boolean,
+    showVoiceToggle: Boolean,
+    onVoiceToggle: (Boolean) -> Unit
+) {
+    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(46.dp).background(Brush.linearGradient(listOf(NeonPink, Violet, ElectricBlue)), CircleShape), contentAlignment = Alignment.Center) {
             Image(painter = painterResource(R.drawable.fox_icon_foreground), contentDescription = "Лисичка", modifier = Modifier.size(38.dp))
         }
         Spacer(Modifier.width(11.dp))
@@ -279,9 +349,12 @@ private fun TopBar(onSettings: () -> Unit) {
                 Text("Онлайн · твой ИИ-помощник", color = Muted, fontSize = 11.sp)
             }
         }
-        IconButton(onClick = onSettings) {
-            Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Lavender)
+        if (showVoiceToggle) {
+            IconButton(onClick = { onVoiceToggle(!voiceEnabled) }) {
+                Icon(if (voiceEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff, contentDescription = "Автоозвучка", tint = if (voiceEnabled) Lavender else Muted)
+            }
         }
+        IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Lavender) }
     }
 }
 
@@ -316,39 +389,64 @@ private fun WelcomeHeader() {
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        if (!message.fromUser) {
-            Image(
-                painter = painterResource(R.drawable.fox_icon_foreground),
-                contentDescription = "Лисичка",
-                modifier = Modifier.padding(end = 7.dp, bottom = 5.dp).size(30.dp)
-            )
-        }
-        Surface(
-            color = if (message.fromUser) Color(0xFF39205F) else Color(0xF4141025),
-            shape = RoundedCornerShape(
-                topStart = 19.dp, topEnd = 19.dp,
-                bottomEnd = if (message.fromUser) 5.dp else 19.dp,
-                bottomStart = if (message.fromUser) 19.dp else 5.dp
-            ),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                if (message.fromUser) Color(0xFF9654F3) else Color(0xFF553A83)
-            ),
-            modifier = Modifier.widthIn(max = 310.dp)
-        ) {
-            Text(
-                text = remember(message.text) { markdownText(message.text) },
-                modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
-                color = Color.White,
-                fontSize = 14.sp,
-                lineHeight = 21.sp
-            )
+private fun MessageBubble(
+    message: ChatMessage,
+    onSpeak: () -> Unit,
+    onStop: () -> Unit,
+    isSpeaking: Boolean,
+    playbackPositionMs: Int
+) {
+    val clipboard = LocalClipboardManager.current
+    val totalMs = message.audioDurationMs ?: 0
+    fun timeLabel(ms: Int): String {
+        val seconds = (ms / 1000).coerceAtLeast(0)
+        return "%d:%02d".format(seconds / 60, seconds % 60)
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
+        if (!message.fromUser) Image(painter = painterResource(R.drawable.fox_icon_foreground), contentDescription = "Лисичка", modifier = Modifier.padding(end = 7.dp, bottom = 5.dp).size(30.dp))
+        Column(Modifier.widthIn(max = 310.dp)) {
+            Surface(
+                color = if (message.fromUser) Color(0xFF39205F) else Color(0xF4141025),
+                shape = RoundedCornerShape(topStart = 19.dp, topEnd = 19.dp, bottomEnd = if (message.fromUser) 5.dp else 19.dp, bottomStart = if (message.fromUser) 19.dp else 5.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (message.fromUser) Color(0xFF9654F3) else Color(0xFF553A83))
+            ) {
+                Text(text = remember(message.text) { markdownText(message.text) }, modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp), color = Color.White, fontSize = 14.sp, lineHeight = 21.sp)
+            }
+            if (!message.fromUser) {
+                Row(Modifier.fillMaxWidth().padding(start = 5.dp, top = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(message.text)) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 3.dp)) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Lavender, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Копировать", color = Lavender, fontSize = 10.sp)
+                    }
+                    TextButton(onClick = if (isSpeaking) onStop else onSpeak, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 3.dp)) {
+                        Icon(if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp, contentDescription = null, tint = Lavender, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (isSpeaking) "Стоп" else "Озвучить", color = Lavender, fontSize = 10.sp)
+                    }
+                }
+                if (message.audioStatus.isNotBlank()) {
+                    Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 8.dp, bottom = 4.dp)) {
+                        Text(
+                            when {
+                                isSpeaking -> "▶ ${timeLabel(playbackPositionMs)} / ${timeLabel(totalMs)}"
+                                message.audioStatus == "Создаю озвучку…" -> "◌ Создаю озвучку…"
+                                message.audioStatus.startsWith("Ошибка") -> "⚠ ${message.audioStatus}"
+                                totalMs > 0 -> "✓ ${message.audioStatus} · ${timeLabel(totalMs)}"
+                                else -> message.audioStatus
+                            },
+                            color = if (message.audioStatus.startsWith("Ошибка")) Color(0xFFFF8D8D) else Muted,
+                            fontSize = 10.sp
+                        )
+                        if (totalMs > 0) LinearProgressIndicator(
+                            progress = { if (isSpeaking) (playbackPositionMs.toFloat() / totalMs).coerceIn(0f, 1f) else 1f },
+                            modifier = Modifier.fillMaxWidth().padding(top = 3.dp).height(3.dp),
+                            color = NeonGlow,
+                            trackColor = PanelBorder
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -397,14 +495,13 @@ private fun Composer(
 }
 
 @Composable
-private fun SettingsScreen(onVoiceDisabled: () -> Unit, onModels: () -> Unit, onAbout: () -> Unit) {
+private fun SettingsScreen(voiceEnabled: Boolean, onVoiceChange: (Boolean) -> Unit, onVoiceDisabled: () -> Unit, onModels: () -> Unit, onAbout: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var baseUrl by rememberSaveable { mutableStateOf(AppSettings.baseUrl(context)) }
     var apiKey by rememberSaveable { mutableStateOf(AppSettings.apiKey(context)) }
     var model by rememberSaveable { mutableStateOf(AppSettings.model(context)) }
     var prompt by rememberSaveable { mutableStateOf(AppSettings.prompt(context)) }
-    var voiceEnabled by rememberSaveable { mutableStateOf(AppSettings.voiceEnabled(context)) }
     var voiceModel by rememberSaveable { mutableStateOf(AppSettings.voiceModel(context)) }
     var models by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -433,9 +530,8 @@ private fun SettingsScreen(onVoiceDisabled: () -> Unit, onModels: () -> Unit, on
             Switch(
                 checked = voiceEnabled,
                 onCheckedChange = {
-                    voiceEnabled = it
-                    AppSettings.putBoolean(context, "voice_enabled", it)
-                    if (!it) { VoicePlayer.stop(); onVoiceDisabled() }
+                    onVoiceChange(it)
+                    if (!it) onVoiceDisabled()
                 }
             )
         }
