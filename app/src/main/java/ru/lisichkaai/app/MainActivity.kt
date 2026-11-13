@@ -20,6 +20,10 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -287,15 +291,17 @@ private fun ChatScreen(
     onDraftChange: (String) -> Unit,
     sending: Boolean,
     speaking: Boolean,
+    speakingMessageIndex: Int?,
+    playbackPositionMs: Int,
+    voiceEnabled: Boolean,
     voiceError: String?,
+    onToggleVoice: (Boolean) -> Unit,
+    onSpeakMessage: (Int) -> Unit,
     onStopSpeech: () -> Unit,
     onSend: () -> Unit
 ) {
     val listState = rememberLazyListState()
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
-    }
-
+    LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex) }
     Column(Modifier.fillMaxSize()) {
         if (messages.isEmpty()) WelcomeHeader()
         LazyColumn(
@@ -304,48 +310,32 @@ private fun ChatScreen(
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(messages) { MessageBubble(it) }
-        }
-        if (sending) {
-            Text(
-                "Лисичка печатает…",
-                color = Lavender,
-                modifier = Modifier.padding(start = 22.dp, bottom = 6.dp)
-            )
-        }
-        if (speaking) {
-            OutlinedButton(
-                onClick = onStopSpeech,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            ) {
-                Text("Остановить озвучку")
+            itemsIndexed(messages) { index, message ->
+                MessageBubble(
+                    message = message,
+                    onSpeak = { onSpeakMessage(index) },
+                    onStop = onStopSpeech,
+                    isSpeaking = speaking && speakingMessageIndex == index,
+                    playbackPositionMs = if (speakingMessageIndex == index) playbackPositionMs else 0
+                )
             }
         }
-        voiceError?.let {
-            Text(it, color = Color(0xFFFF8D8D), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
-        }
-        Composer(
-            value = draft,
-            onValueChange = onDraftChange,
-            enabled = !sending,
-            onSend = onSend
-        )
+        if (sending) Text("Лисичка печатает…", color = Lavender, modifier = Modifier.padding(start = 22.dp, bottom = 6.dp))
+        if (speaking) Text("Сейчас звучит ответ Лисички", color = Lavender, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 4.dp))
+        voiceError?.let { Text(it, color = Color(0xFFFF8D8D), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
+        Composer(value = draft, onValueChange = onDraftChange, enabled = !sending, onSend = onSend)
     }
 }
 
 @Composable
-private fun TopBar(onSettings: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            Modifier.size(46.dp).background(
-                Brush.linearGradient(listOf(NeonPink, Violet, ElectricBlue)),
-                CircleShape
-            ),
-            contentAlignment = Alignment.Center
-        ) {
+private fun TopBar(
+    onSettings: () -> Unit,
+    voiceEnabled: Boolean,
+    showVoiceToggle: Boolean,
+    onVoiceToggle: (Boolean) -> Unit
+) {
+    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(46.dp).background(Brush.linearGradient(listOf(NeonPink, Violet, ElectricBlue)), CircleShape), contentAlignment = Alignment.Center) {
             Image(painter = painterResource(R.drawable.fox_icon_foreground), contentDescription = "Лисичка", modifier = Modifier.size(38.dp))
         }
         Spacer(Modifier.width(11.dp))
@@ -357,9 +347,12 @@ private fun TopBar(onSettings: () -> Unit) {
                 Text("Онлайн · твой ИИ-помощник", color = Muted, fontSize = 11.sp)
             }
         }
-        IconButton(onClick = onSettings) {
-            Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Lavender)
+        if (showVoiceToggle) {
+            IconButton(onClick = { onVoiceToggle(!voiceEnabled) }) {
+                Icon(if (voiceEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff, contentDescription = "Автоозвучка", tint = if (voiceEnabled) Lavender else Muted)
+            }
         }
+        IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Lavender) }
     }
 }
 
@@ -394,39 +387,64 @@ private fun WelcomeHeader() {
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        if (!message.fromUser) {
-            Image(
-                painter = painterResource(R.drawable.fox_icon_foreground),
-                contentDescription = "Лисичка",
-                modifier = Modifier.padding(end = 7.dp, bottom = 5.dp).size(30.dp)
-            )
-        }
-        Surface(
-            color = if (message.fromUser) Color(0xFF39205F) else Color(0xF4141025),
-            shape = RoundedCornerShape(
-                topStart = 19.dp, topEnd = 19.dp,
-                bottomEnd = if (message.fromUser) 5.dp else 19.dp,
-                bottomStart = if (message.fromUser) 19.dp else 5.dp
-            ),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                if (message.fromUser) Color(0xFF9654F3) else Color(0xFF553A83)
-            ),
-            modifier = Modifier.widthIn(max = 310.dp)
-        ) {
-            Text(
-                text = remember(message.text) { markdownText(message.text) },
-                modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
-                color = Color.White,
-                fontSize = 14.sp,
-                lineHeight = 21.sp
-            )
+private fun MessageBubble(
+    message: ChatMessage,
+    onSpeak: () -> Unit,
+    onStop: () -> Unit,
+    isSpeaking: Boolean,
+    playbackPositionMs: Int
+) {
+    val clipboard = LocalClipboardManager.current
+    val totalMs = message.audioDurationMs ?: 0
+    fun timeLabel(ms: Int): String {
+        val seconds = (ms / 1000).coerceAtLeast(0)
+        return "%d:%02d".format(seconds / 60, seconds % 60)
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
+        if (!message.fromUser) Image(painter = painterResource(R.drawable.fox_icon_foreground), contentDescription = "Лисичка", modifier = Modifier.padding(end = 7.dp, bottom = 5.dp).size(30.dp))
+        Column(Modifier.widthIn(max = 310.dp)) {
+            Surface(
+                color = if (message.fromUser) Color(0xFF39205F) else Color(0xF4141025),
+                shape = RoundedCornerShape(topStart = 19.dp, topEnd = 19.dp, bottomEnd = if (message.fromUser) 5.dp else 19.dp, bottomStart = if (message.fromUser) 19.dp else 5.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (message.fromUser) Color(0xFF9654F3) else Color(0xFF553A83))
+            ) {
+                Text(text = remember(message.text) { markdownText(message.text) }, modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp), color = Color.White, fontSize = 14.sp, lineHeight = 21.sp)
+            }
+            if (!message.fromUser) {
+                Row(Modifier.fillMaxWidth().padding(start = 5.dp, top = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(message.text)) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 3.dp)) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Lavender, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Копировать", color = Lavender, fontSize = 10.sp)
+                    }
+                    TextButton(onClick = if (isSpeaking) onStop else onSpeak, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 3.dp)) {
+                        Icon(if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp, contentDescription = null, tint = Lavender, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (isSpeaking) "Стоп" else "Озвучить", color = Lavender, fontSize = 10.sp)
+                    }
+                }
+                if (message.audioStatus.isNotBlank()) {
+                    Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 8.dp, bottom = 4.dp)) {
+                        Text(
+                            when {
+                                isSpeaking -> "▶ ${timeLabel(playbackPositionMs)} / ${timeLabel(totalMs)}"
+                                message.audioStatus == "Создаю озвучку…" -> "◌ Создаю озвучку…"
+                                message.audioStatus.startsWith("Ошибка") -> "⚠ ${message.audioStatus}"
+                                totalMs > 0 -> "✓ ${message.audioStatus} · ${timeLabel(totalMs)}"
+                                else -> message.audioStatus
+                            },
+                            color = if (message.audioStatus.startsWith("Ошибка")) Color(0xFFFF8D8D) else Muted,
+                            fontSize = 10.sp
+                        )
+                        if (totalMs > 0) LinearProgressIndicator(
+                            progress = { if (isSpeaking) (playbackPositionMs.toFloat() / totalMs).coerceIn(0f, 1f) else 1f },
+                            modifier = Modifier.fillMaxWidth().padding(top = 3.dp).height(3.dp),
+                            color = NeonGlow,
+                            trackColor = PanelBorder
+                        )
+                    }
+                }
+            }
         }
     }
 }
