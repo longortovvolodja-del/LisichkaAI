@@ -34,6 +34,28 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Restore and validate release signing key
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Required GitHub Actions secret $name is missing or empty."
+              exit 1
+            fi
+          done
+          KEYSTORE_PATH="$RUNNER_TEMP/lisichka-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+          echo "ANDROID_KEYSTORE_FILE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "Release keystore restored and alias validated."
+
       - name: Read release version and notes
         id: meta
         shell: bash
@@ -50,11 +72,23 @@ jobs:
             exit 1
           fi
 
-      - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+      - name: Build signed release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: gradle --no-daemon assembleRelease
 
-      - name: Verify APK
-        run: test -s app/build/outputs/apk/debug/app-debug.apk
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then echo "::error::apksigner was not found in Android SDK build-tools."; exit 1; fi
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          echo "APK signature verification passed."
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -62,9 +96,14 @@ jobs:
           tag_name: v${{ steps.meta.outputs.version }}
           name: Лисичка ИИ v${{ steps.meta.outputs.version }}
           body_path: release-notes.md
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: app/build/outputs/apk/release/app-release.apk
           fail_on_unmatched_files: true
           make_latest: true
+
+      - name: Remove temporary signing key
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/lisichka-release.jks"
 
       - name: Prepare next development version
         if: success()

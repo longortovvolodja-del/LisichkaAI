@@ -8,6 +8,19 @@ val appVersion = rootProject.file("VERSION").readText().trim()
 val versionParts = appVersion.split(".").map { it.toInt() }
 require(versionParts.size == 3) { "VERSION must use MAJOR.MINOR.PATCH" }
 
+// Release signing is supplied only by CI through environment variables.
+// Never commit the keystore or its passwords to the repository.
+val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
+val releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseKeystorePath,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "ru.lisichkaai.app"
     compileSdk = 35
@@ -18,6 +31,26 @@ android {
         targetSdk = 35
         versionCode = versionParts[0] * 1_000_000 + versionParts[1] * 1_000 + versionParts[2]
         versionName = appVersion
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 
     buildFeatures { compose = true }
