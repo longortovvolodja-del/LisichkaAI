@@ -80,6 +80,7 @@ private fun LisichkaApp() {
     var selectedTab by rememberSaveable { mutableStateOf("Чат") }
     var sending by remember { mutableStateOf(false) }
     var speaking by remember { mutableStateOf(false) }
+    var voiceEnabled by rememberSaveable { mutableStateOf(AppSettings.voiceEnabled(context)) }
     var speakingMessageIndex by remember { mutableStateOf<Int?>(null) }
     var playbackPositionMs by remember { mutableIntStateOf(0) }
     var voiceError by remember { mutableStateOf<String?>(null) }
@@ -501,7 +502,6 @@ private fun SettingsScreen(voiceEnabled: Boolean, onVoiceChange: (Boolean) -> Un
     var apiKey by rememberSaveable { mutableStateOf(AppSettings.apiKey(context)) }
     var model by rememberSaveable { mutableStateOf(AppSettings.model(context)) }
     var prompt by rememberSaveable { mutableStateOf(AppSettings.prompt(context)) }
-    var voiceEnabled by rememberSaveable { mutableStateOf(AppSettings.voiceEnabled(context)) }
     var voiceModel by rememberSaveable { mutableStateOf(AppSettings.voiceModel(context)) }
     var models by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var expanded by rememberSaveable { mutableStateOf(false) }
